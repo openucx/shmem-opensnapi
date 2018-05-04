@@ -17,17 +17,37 @@
 int
 shmem_my_pe(void)
 {
+    int my;
+
     SHMEMU_CHECK_INIT();
 
-    return shmemc_my_pe();
+    my = shmemc_my_pe();
+
+    logger(LOG_RANKS,
+           "%s() -> %d",
+           __func__,
+           my
+           );
+
+    return my;
 }
 
 int
 shmem_n_pes(void)
 {
+    int n;
+
     SHMEMU_CHECK_INIT();
 
-    return shmemc_n_pes();
+    n = shmemc_n_pes();
+
+    logger(LOG_RANKS,
+           "%s() -> %d",
+           __func__,
+           n
+           );
+
+    return n;
 }
 
 #ifdef ENABLE_PSHMEM
@@ -40,13 +60,13 @@ shmem_n_pes(void)
 int
 _my_pe(void)
 {
-    deprecate(__func__);
+    deprecate(__func__, 1, 2);
     return shmemc_my_pe();
 }
 
 int
 _num_pes(void)
 {
-    deprecate(__func__);
+    deprecate(__func__, 1, 2);
     return shmemc_n_pes();
 }

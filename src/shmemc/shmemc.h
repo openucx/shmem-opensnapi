@@ -6,6 +6,7 @@
 #include "thispe.h"
 #include "state.h"
 #include "shmemc.h"
+#include "memfence.h"
 #include "shmem/defs.h"
 
 #include <sys/types.h>          /* size_t */
@@ -39,8 +40,8 @@ void shmemc_print_env_vars(FILE *stream, const char *prefix);
  * -- Per-context routines ---------------------------------------------------
  */
 
-void shmemc_progress(void);
 void shmemc_ctx_progress(shmem_ctx_t ctx);
+void shmemc_progress(void);
 
 void shmemc_ctx_fence(shmem_ctx_t ctx);
 void shmemc_ctx_quiet(shmem_ctx_t ctx);
@@ -247,12 +248,16 @@ SHMEMC_CTX_WAIT_UNTIL(64, ge)
 
 /*
  * -- Context management -----------------------------------------------------
+ *
+ * int functions return 0 for success, non-zero otherwise
  */
 
 int shmemc_context_create(long options, shmem_ctx_t *ctxp);
 void shmemc_context_destroy(shmem_ctx_t ctx);
-/* used in up-level */
-int shmemc_create_default_context(shmem_ctx_t *ctxp);
+unsigned long shmemc_context_id(shmem_ctx_t ctx);
+
+extern shmemc_context_t shmemc_default_context;
+int shmemc_create_default_context(void);
 
 /*
  * -- barriers & syncs -------------------------------------------------------

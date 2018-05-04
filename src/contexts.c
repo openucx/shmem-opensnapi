@@ -6,7 +6,6 @@
 
 #include "shmem_mutex.h"
 
-#include "thispe.h"
 #include "shmemu.h"
 #include "shmemc.h"
 #include "shmem/defs.h"
@@ -19,12 +18,16 @@
 #endif /* ENABLE_PSHMEM */
 
 /*
- * link-time constants
+ * the default context is a link-time constant and has to be
+ * instantiated at all times
  */
-shmem_ctx_t SHMEM_CTX_DEFAULT = NULL;
+
+shmem_ctx_t SHMEM_CTX_DEFAULT = (shmem_ctx_t *) &shmemc_default_context;
 
 /*
  * create new context with supplied options
+ *
+ * Return 1 on success, 0 on failure
  */
 
 int
@@ -35,6 +38,12 @@ shmem_ctx_create(long options, shmem_ctx_t *ctxp)
     SHMEMU_CHECK_INIT();
 
     SHMEMT_MUTEX_PROTECT(s = shmemc_context_create(options, ctxp));
+
+    logger(LOG_CONTEXTS,
+           "%s(options=%#lx, ctxp->%p)",
+           __func__,
+           options, *ctxp
+           );
 
     return s;
 }
@@ -50,6 +59,12 @@ shmem_ctx_destroy(shmem_ctx_t ctx)
     SHMEMU_CHECK_SAME_THREAD(ctx);
 
     SHMEMT_MUTEX_PROTECT(shmemc_context_destroy(ctx));
+
+    logger(LOG_CONTEXTS,
+           "%s(ctx=%p)",
+           __func__,
+           ctx
+           );
 }
 
 #ifdef ENABLE_EXPERIMENTAL

@@ -20,83 +20,6 @@
 
 #include <ucp/api/ucp.h>
 
-#define DUMP_DEBUG_INFO 0
-
-#if DUMP_DEBUG_INFO
-inline static void
-check_version(void)
-{
-    unsigned int maj, min, rel;
-
-    ucp_get_version(&maj, &min, &rel);
-
-    fprintf(stderr, "Piecewise query:\n");
-    fprintf(stderr, "    UCX version \"%u.%u.%u\"\n", maj, min, rel);
-    fprintf(stderr, "String query\n");
-    fprintf(stderr, "    UCX version \"%s\"\n", ucp_get_version_string());
-    fprintf(stderr, "\n");
-}
-
-/*
- * debugging output
- */
-inline static void
-dump_mapped_mem_info(const char *name, const mem_info_t *mp)
-{
-    ucs_status_t s;
-    ucp_mem_attr_t attr;
-
-    /* the attributes we want to inspect */
-    attr.field_mask =
-        UCP_MEM_ATTR_FIELD_ADDRESS |
-        UCP_MEM_ATTR_FIELD_LENGTH;
-
-    s = ucp_mem_query(mp->racc.mh, &attr);
-    shmemu_assert("can't query memory attributes", s == UCS_OK);
-}
-
-inline static void
-dump(void)
-{
-    if (proc.rank == 0) {
-        const ucs_config_print_flags_t flags =
-            UCS_CONFIG_PRINT_CONFIG |
-            UCS_CONFIG_PRINT_HEADER;
-
-        ucp_config_print(proc.comms.ucx_cfg, stderr, "My config", flags);
-        ucp_context_print_info(proc.comms.ucx_ctxt, stderr);
-        /* ucp_worker_print_info(proc.comms.wrkr, stderr); */
-        check_version();
-        fprintf(stderr, "----------------------------------------------\n\n");
-        fflush(stderr);
-    }
-    dump_mapped_mem_info("heap", def_symm_heap);
-    dump_mapped_mem_info("globals", globals);
-}
-#endif /* DUMP_DEBUG_INFO */
-
-/*
- * UCX config
- */
-inline static void
-make_init_params(ucp_params_t *pmp)
-{
-    pmp->field_mask =
-        UCP_PARAM_FIELD_FEATURES |
-        UCP_PARAM_FIELD_MT_WORKERS_SHARED |
-        UCP_PARAM_FIELD_ESTIMATED_NUM_EPS;
-
-    pmp->features =
-        UCP_FEATURE_RMA |       /* put/get */
-        UCP_FEATURE_AMO32 |     /* 32-bit atomics */
-        UCP_FEATURE_AMO64 |     /* 64-bit atomics */
-        UCP_FEATURE_WAKEUP;     /* events */
-
-    pmp->mt_workers_shared = (proc.td.osh_tl > SHMEM_THREAD_SINGLE);
-
-    pmp->estimated_num_eps = proc.nranks;
-}
-
 /*
  * worker tables
  */
@@ -105,8 +28,8 @@ allocate_xworkers_table(void)
 {
     proc.comms.xchg_wrkr_info = (worker_info_t *)
         calloc(proc.nranks, sizeof(*(proc.comms.xchg_wrkr_info)));
-    shmemu_assert("can't allocate memory for worker exchange",
-                  proc.comms.xchg_wrkr_info != NULL);
+    shmemu_assert(proc.comms.xchg_wrkr_info != NULL,
+                  "can't allocate memory for worker exchange");
 }
 
 inline static void
@@ -125,8 +48,8 @@ allocate_endpoints_table(void)
 {
     proc.comms.eps = (ucp_ep_h *)
         calloc(proc.nranks, sizeof(*(proc.comms.eps)));
-    shmemu_assert("can't allocate memory for endpoints",
-                  proc.comms.eps != NULL);
+    shmemu_assert(proc.comms.eps != NULL,
+                  "can't allocate memory for endpoints");
 }
 
 inline static void
@@ -141,7 +64,7 @@ inline static void
 allocate_contexts_table(void)
 {
     /*
-     * no SHMEM contexts created yet
+     * no new SHMEM contexts created yet
      */
     proc.comms.nctxts = 0;
     proc.comms.ctxts = NULL;
@@ -150,17 +73,19 @@ allocate_contexts_table(void)
 inline static void
 deallocate_contexts_table(void)
 {
+    shmemc_context_h def = (shmemc_context_h) SHMEM_CTX_DEFAULT;
     size_t c;
 
     /*
      * special release case for default context
      */
-    ucp_worker_release_address(proc.comms.ctxts[0]->w,
+    ucp_worker_release_address(def->w,
                                proc.comms.xchg_wrkr_info[proc.rank].addr);
+    ucp_worker_destroy(def->w);
     /*
-     * clear up each SHMEM context
+     * clear up each allocated SHMEM context
      */
-    for (c = 0; c < proc.comms.nctxts; c += 1) {
+    for (c = 1; c < proc.comms.nctxts; c += 1) {
         if (proc.comms.ctxts[c] != NULL) {
             ucp_worker_destroy(proc.comms.ctxts[c]->w);
             free(proc.comms.ctxts[c]);
@@ -169,66 +94,12 @@ deallocate_contexts_table(void)
 }
 
 /*
- * a couple of shortcuts
+ * shortcut for global variables
  */
 static mem_info_t *globals;
-static mem_info_t *def_symm_heap;
 
 inline static void
-register_symmetric_heap(void)
-{
-    ucs_status_t s;
-    ucp_mem_map_params_t mp;
-    ucp_mem_attr_t attr;
-
-    /* now register it with UCX */
-    mp.field_mask =
-        UCP_MEM_MAP_PARAM_FIELD_LENGTH |
-        UCP_MEM_MAP_PARAM_FIELD_FLAGS;
-
-    /* TODO hardwired index */
-    mp.length = proc.env.heaps.heapsize[0];
-    mp.flags =
-        UCP_MEM_MAP_ALLOCATE;
-
-    s = ucp_mem_map(proc.comms.ucx_ctxt, &mp, &def_symm_heap->racc.mh);
-    shmemu_assert("can't map memory", s == UCS_OK);
-
-    /*
-     * query back to find where it is, and its actual size (might be
-     * aligned/padded)
-     */
-
-    /* the attributes we want to inspect */
-    attr.field_mask =
-        UCP_MEM_ATTR_FIELD_ADDRESS |
-        UCP_MEM_ATTR_FIELD_LENGTH;
-
-    s = ucp_mem_query(def_symm_heap->racc.mh, &attr);
-    shmemu_assert("can't query symmetric heap memory", s == UCS_OK);
-
-    /* tell the PE what was given */
-    def_symm_heap->base = (uint64_t) attr.address;
-    def_symm_heap->end  = def_symm_heap->base + attr.length;
-    def_symm_heap->len  = attr.length;
-
-    /* initialize the heap allocator */
-    shmema_init((void *) def_symm_heap->base, def_symm_heap->len);
-}
-
-inline static void
-deregister_symmetric_heap(void)
-{
-    ucs_status_t s;
-
-    shmema_finalize();
-
-    s = ucp_mem_unmap(proc.comms.ucx_ctxt, def_symm_heap->racc.mh);
-    shmemu_assert("can't unmap symmetric heap memory", s == UCS_OK);
-}
-
-inline static void
-register_globals(void)
+register_globals()
 {
     extern char data_start; /* from the executable */
     extern char end; /* from the executable */
@@ -253,7 +124,9 @@ register_globals(void)
     globals->len  = len;
 
     s = ucp_mem_map(proc.comms.ucx_ctxt, &mp, &globals->racc.mh);
-    shmemu_assert("can't map global memory", s == UCS_OK);
+    shmemu_assert(s == UCS_OK, "can't map global memory");
+
+    /* don't need allocator, variables already there */
 }
 
 inline static void
@@ -262,7 +135,63 @@ deregister_globals(void)
     ucs_status_t s;
 
     s = ucp_mem_unmap(proc.comms.ucx_ctxt, globals->racc.mh);
-    shmemu_assert("can't unmap global memory", s == UCS_OK);
+    shmemu_assert(s == UCS_OK, "can't unmap global memory");
+}
+
+/*
+ * while there's only 1 globals area, we can theoretically have
+ * multiple symmetric heaps
+ */
+
+inline static void
+register_symmetric_heap(size_t heapno, mem_info_t *mip)
+{
+    ucs_status_t s;
+    ucp_mem_map_params_t mp;
+    ucp_mem_attr_t attr;
+
+    /* now register it with UCX */
+    mp.field_mask =
+        UCP_MEM_MAP_PARAM_FIELD_LENGTH |
+        UCP_MEM_MAP_PARAM_FIELD_FLAGS;
+
+    mp.length = proc.env.heaps.heapsize[heapno];
+    mp.flags =
+        UCP_MEM_MAP_ALLOCATE;
+
+    s = ucp_mem_map(proc.comms.ucx_ctxt, &mp, &mip->racc.mh);
+    shmemu_assert(s == UCS_OK, "can't map symmetric heap memory");
+
+    /*
+     * query back to find where it is, and its actual size (might be
+     * aligned/padded)
+     */
+
+    /* the attributes we want to inspect */
+    attr.field_mask =
+        UCP_MEM_ATTR_FIELD_ADDRESS |
+        UCP_MEM_ATTR_FIELD_LENGTH;
+
+    s = ucp_mem_query(mip->racc.mh, &attr);
+    shmemu_assert(s == UCS_OK,
+                  "can't query extent of symmetric heap memory");
+
+    /* tell the PE what was given */
+    mip->base = (uint64_t) attr.address;
+    mip->end  = mip->base + attr.length;
+    mip->len  = attr.length;
+
+    /* initialize the heap allocator */
+    shmema_init((void *) mip->base, mip->len);
+}
+
+inline static void
+deregister_symmetric_heap(mem_info_t *mip)
+{
+    ucs_status_t s;
+
+    s = ucp_mem_unmap(proc.comms.ucx_ctxt, mip->racc.mh);
+    shmemu_assert(s == UCS_OK, "can't unmap symmetric heap memory");
 }
 
 inline static void
@@ -286,7 +215,6 @@ blocking_ep_disconnect(ucp_ep_h ep)
         /* NOT REACHED */
     }
     else if (UCS_PTR_IS_ERR(req)) {
-        // ucp_request_cancel(wrkr, req);
         return;
         /* NOT REACHED */
     }
@@ -318,27 +246,70 @@ disconnect_all_endpoints(void)
     }
 }
 
+/*
+ * create backing for memory regions (heaps & globals)
+ */
+
 inline static void
 init_memory_regions(void)
 {
     size_t i;
 
-    /* TODO: hardwire for now: globals + default symmetric heap */
-    proc.comms.nregions = 2;
+    /* 1 globals region, plus symmetric heaps */
+    proc.comms.nregions = 1 + proc.env.heaps.nheaps;
 
     /* init that many regions on me */
     proc.comms.regions =
         (mem_region_t *) malloc(proc.comms.nregions * sizeof(mem_region_t));
-    shmemu_assert("can't allocate memory for memory regions",
-                  proc.comms.regions != NULL);
+    shmemu_assert(proc.comms.regions != NULL,
+                  "can't allocate memory for memory regions");
 
     /* now prep for all PEs to exchange */
     for (i = 0; i < proc.comms.nregions; i += 1) {
         proc.comms.regions[i].minfo =
             (mem_info_t *) malloc(proc.nranks * sizeof(mem_info_t));
-        shmemu_assert("can't allocate memory region metadata",
-                      proc.comms.regions[i].minfo != NULL);
+        shmemu_assert(proc.comms.regions[i].minfo != NULL,
+                      "can't allocate memory region metadata");
     }
+
+    /* to access global variables */
+    globals = & proc.comms.regions[0].minfo[proc.rank];
+}
+
+/*
+ * register global variables (implicitly index 0), then all heaps
+ */
+
+inline static void
+register_memory_regions(void)
+{
+    size_t hi;
+
+    register_globals();
+
+    for (hi = 1; hi < proc.comms.nregions; hi += 1) {
+        mem_info_t *shp = & proc.comms.regions[hi].minfo[proc.rank];
+
+        register_symmetric_heap(hi - 1, shp);
+    }
+}
+
+inline static void
+deregister_memory_regions(void)
+{
+    size_t hi;
+
+    /* deregister symmetric heaps, then globals (index 0) */
+    for (hi = proc.comms.nregions - 1; hi >= 1; hi -= 1) {
+        mem_info_t *shp = & proc.comms.regions[hi].minfo[proc.rank];
+
+        deregister_symmetric_heap(shp);
+
+        /* TODO: reclaim shmema_finalize(); */
+
+    }
+
+    deregister_globals();
 }
 
 /**
@@ -395,36 +366,55 @@ extern long *shmemc_sync_all_psync;
         shmema_free(_var);                                              \
     } while (0)
 
-void
-shmemc_ucx_init(void)
+/*
+ * UCX config
+ */
+
+inline static void
+ucx_init_ready(void)
 {
     ucs_status_t s;
     ucp_params_t pm;
 
-    /* start initialization */
     s = ucp_config_read(NULL, NULL, &proc.comms.ucx_cfg);
-    shmemu_assert("can't read UCX config", s == UCS_OK);
+    shmemu_assert(s == UCS_OK, "can't read UCX config");
 
-    make_init_params(&pm);
+    pm.field_mask =
+        UCP_PARAM_FIELD_FEATURES |
+        UCP_PARAM_FIELD_MT_WORKERS_SHARED |
+        UCP_PARAM_FIELD_ESTIMATED_NUM_EPS;
+
+    pm.features =
+        UCP_FEATURE_RMA |       /* put/get */
+        UCP_FEATURE_AMO32 |     /* 32-bit atomics */
+        UCP_FEATURE_AMO64 |     /* 64-bit atomics */
+        UCP_FEATURE_WAKEUP;     /* events (not used, but looking ahead) */
+
+    pm.mt_workers_shared = (proc.td.osh_tl > SHMEM_THREAD_SINGLE);
+
+    pm.estimated_num_eps = proc.nranks;
 
     s = ucp_init(&pm, proc.comms.ucx_cfg, &proc.comms.ucx_ctxt);
-    shmemu_assert("can't initialize UCX", s == UCS_OK);
+    shmemu_assert(s == UCS_OK, "can't initialize UCX");
+}
 
+void
+shmemc_ucx_init(void)
+{
+    int n;
+
+    ucx_init_ready();
+
+    /* user-supplied setup */
     shmemc_env_init();
 
     /* collectives are go */
     shmemc_barrier_init();
     shmemc_broadcast_init();
 
+    /* make remote memory usable */
     init_memory_regions();
-
-    /* local shortcuts TODO: hardwired index */
-    globals = & proc.comms.regions[0].minfo[proc.rank];
-    def_symm_heap = & proc.comms.regions[1].minfo[proc.rank];
-
-    /* TODO: generalize for multiple heaps */
-    register_globals();
-    register_symmetric_heap();
+    register_memory_regions();
 
     /* pre-allocate internal sync variables */
     ALLOC_INTERNAL_SYMM_VAR(shmemc_barrier_all_psync);
@@ -436,17 +426,20 @@ shmemc_ucx_init(void)
 
     /* prep contexts, allocate first one (default) */
     allocate_contexts_table();
-    shmemc_create_default_context(&SHMEM_CTX_DEFAULT);
 
-#if DUMP_DEBUG_INFO
-    dump();
-#endif /* DUMP_DEBUG_INFO */
+    n = shmemc_create_default_context();
+    shmemu_assert(n == 0, "couldn't create default context");
 
     /* don't need config info any more */
     ucp_config_release(proc.comms.ucx_cfg);
 
+    /* set up globalexit handler */
     shmemc_globalexit_init();
 }
+
+/*
+ * ucx_finalize basically just undoes ucx_init
+ */
 
 void
 shmemc_ucx_finalize(void)
@@ -465,9 +458,7 @@ shmemc_ucx_finalize(void)
     FREE_INTERNAL_SYMM_VAR(shmemc_barrier_all_psync);
     FREE_INTERNAL_SYMM_VAR(shmemc_sync_all_psync);
 
-    /* TODO: generalize for multiple heaps */
-    deregister_symmetric_heap();
-    deregister_globals();
+    deregister_memory_regions();
 
     shmemc_broadcast_finalize();
     shmemc_barrier_finalize();

@@ -50,7 +50,7 @@ int shmemu_get_children_info(int tree_size, int tree_degree, int node,
 int shmemu_get_children_info_binomial(int tree_size, int node, int *children);
 
 /*
- * message logging
+ * message logging (cf. logger.c to init these)
  */
 
 #define LOG_ALL        "ALL"
@@ -58,8 +58,11 @@ int shmemu_get_children_info_binomial(int tree_size, int node, int *children);
 #define LOG_INIT       "INIT"
 #define LOG_FINALIZE   "FINALIZE"
 #define LOG_MEMORY     "MEMORY"
+#define LOG_RMA        "RMA"
+#define LOG_FENCE      "FENCE"
 #define LOG_HEAPS      "HEAPS"
 #define LOG_CONTEXTS   "CONTEXTS"
+#define LOG_RANKS      "RANKS"
 #define LOG_INFO       "INFO"
 #define LOG_REDUCTIONS "REDUCTIONS"
 #define LOG_BARRIERS   "BARRIERS"
@@ -73,17 +76,6 @@ int shmemu_get_children_info_binomial(int tree_size, int node, int *children);
  */
 void shmemu_fatal(const char *fmt, ...);
 
-/*
- * our own assertion check (e.g. to name the calling function)
- */
-# define shmemu_assert(_name, _cond)                                    \
-    do {                                                                \
-        if (! (_cond)) {                                                \
-            shmemu_fatal("In \"%s\", assertion failed: %s",             \
-                         _name, #_cond);                                \
-        }                                                               \
-    } while (0)
-
 #ifdef ENABLE_LOGGING
 
 typedef const char *shmemu_log_t;
@@ -94,11 +86,11 @@ void shmemu_logger_init(void);
 void shmemu_logger_finalize(void);
 
 void shmemu_logger(shmemu_log_t evt, const char *fmt, ...);
-void shmemu_deprecate(const char *fn);
+void shmemu_deprecate(const char *fn, int maj, int min);
 
 # define logger(...) shmemu_logger(__VA_ARGS__)
 
-# define deprecate(_fn) shmemu_deprecate(_fn)
+# define deprecate(...) shmemu_deprecate(__VA_ARGS__)
 void shmemu_deprecate_init(void);
 void shmemu_deprecate_finalize(void);
 
@@ -109,13 +101,25 @@ void shmemu_deprecate_finalize(void);
 
 # define logger(...)
 
-# define deprecate(_fn)
+# define deprecate(...)
 # define shmemu_deprecate_init()
 # define shmemu_deprecate_finalize()
 
 #endif  /* ENABLE_LOGGING */
 
-#ifdef EBABLE_DEBUG
+#ifdef ENABLE_DEBUG
+
+/*
+ * our own assertion check.  Usage:
+ *
+ * shmemu_assert(condition-check, shmemu_fatal args...)
+ */
+# define shmemu_assert(_cond, ...)                                      \
+    do {                                                                \
+        if (! (_cond)) {                                                \
+            shmemu_fatal("%s, assertion failed: %s", __VA_ARGS__);      \
+        }                                                               \
+    } while (0)
 
 /*
  * sanity checks
@@ -199,6 +203,11 @@ void shmemu_deprecate_finalize(void);
     } while (0)
 
 #else  /* ! ENABLE_DEBUG */
+
+/*
+ * prevent unused-variable warnings
+ */
+# define shmemu_assert(_cond, ...) (void)(_cond)
 
 # define SHMEMU_CHECK_PE_ARG_RANGE(_pe, _argpos)
 # define SHMEMU_CHECK_SYMMETRIC(_addr, _argpos)

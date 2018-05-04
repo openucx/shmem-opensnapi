@@ -37,6 +37,8 @@ KLIST_INIT(freelist, int, __int_free)
 static klist_t(freelist) *fl = NULL;
 
 /*
+ * Register and de-register contexts
+ *
  * first call performs initialization, then reroutes to real work
  */
 
@@ -116,11 +118,57 @@ inline static void
 deregister_context(shmemc_context_h ch)
 {
     proc.comms.ctxts[ch->id] = NULL;
+
     /* this one is re-usable */
     *kl_pushp(freelist, fl) = ch->id;
+
     logger(LOG_CONTEXTS,
            "context #%lu can be reused",
            ch->id);
+}
+
+/*
+ * fill in context
+ *
+ * Return 0 on success, 1 on failure
+ */
+
+inline static int
+shmemc_context_fill(long options, shmemc_context_h ch)
+{
+    ucs_status_t s;
+    ucp_worker_params_t wkpm;
+
+    ch->attr.serialized = options & SHMEM_CTX_SERIALIZED;
+    ch->attr.private    = options & SHMEM_CTX_PRIVATE;
+    ch->attr.nostore    = options & SHMEM_CTX_NOSTORE;
+
+    wkpm.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+
+    if (ch->attr.serialized) {
+        wkpm.thread_mode = UCS_THREAD_MODE_SERIALIZED;
+    }
+    else if (ch->attr.private) {
+        wkpm.thread_mode = UCS_THREAD_MODE_SINGLE;
+    }
+    else {
+        wkpm.thread_mode = UCS_THREAD_MODE_MULTI;
+    }
+
+    s = ucp_worker_create(proc.comms.ucx_ctxt, &wkpm, &(ch->w));
+    if (s != UCS_OK) {
+        return 1;
+        /* NOT REACHED */
+    }
+
+    if (register_context(ch) != 0) {
+        return 1;
+        /* NOT REACHED */
+    }
+
+    ch->creator_thread = shmemc_thread_id();
+
+    return 0;
 }
 
 /*
@@ -132,54 +180,24 @@ deregister_context(shmemc_context_h ch)
 int
 shmemc_context_create(long options, shmem_ctx_t *ctxp)
 {
-    ucs_status_t s;
-    shmemc_context_h newone;
-    ucp_worker_params_t wkpm;
+    int n;
+    shmemc_context_h ch;
 
-    newone = (shmemc_context_h) malloc(sizeof(*newone));
-    if (newone == NULL) {
-        return 1;               /* fail if no memory free for new context */
+    ch = (shmemc_context_h) malloc(sizeof(*ch));
+    if (ch == NULL) {
+        return 1;     /* fail if no memory free for new context */
         /* NOT REACHED */
     }
 
-    newone->attr.serialized = options & SHMEM_CTX_SERIALIZED;
-    newone->attr.private    = options & SHMEM_CTX_PRIVATE;
-    newone->attr.nostore    = options & SHMEM_CTX_NOSTORE;
-
-    wkpm.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-
-    if (newone->attr.serialized) {
-        wkpm.thread_mode = UCS_THREAD_MODE_SERIALIZED;
-    }
-    else if (newone->attr.private) {
-        wkpm.thread_mode = UCS_THREAD_MODE_SINGLE;
+    n = shmemc_context_fill(options, ch);
+    if (n == 0) {
+        *ctxp = (shmem_ctx_t) ch;
     }
     else {
-        wkpm.thread_mode = UCS_THREAD_MODE_MULTI;
+        free(ch);
     }
 
-    s = ucp_worker_create(proc.comms.ucx_ctxt, &wkpm, &(newone->w));
-    if (s != UCS_OK) {
-        goto cleanup;
-        /* NOT REACHED */
-    }
-
-    if (register_context(newone) != 0) {
-        goto cleanup;
-        /* NOT REACHED */
-    }
-
-    newone->creator_thread = shmemc_thread_id();
-
-    /* handle back to caller */
-    *ctxp = (shmem_ctx_t *) newone;
-
-    return 0;
-    /* NOT REACHED */
-
- cleanup:
-    free(newone);
-    return 1;
+    return n;
 }
 
 /*
@@ -190,54 +208,66 @@ shmemc_context_create(long options, shmem_ctx_t *ctxp)
 void
 shmemc_context_destroy(shmem_ctx_t ctx)
 {
-    if (ctx == NULL) {
-        return;
-        /* NOT REACHED */
-    }
-    else if (ctx == SHMEM_CTX_DEFAULT) {
-        logger(LOG_CONTEXTS,
-               "it is illegal to destroy the default context, ignoring...");
-        return;
-        /* NOT REACHED */
+    if (ctx != NULL) {
+        if (ctx != SHMEM_CTX_DEFAULT) {
+            shmemc_context_h ch = (shmemc_context_h) ctx;
+
+            /* spec 1.4 ++ has implicit quiet for storable contexts */
+            shmemc_ctx_quiet(ch);
+
+            ucp_worker_destroy(ch->w);
+
+            deregister_context(ch);
+        }
+        else {
+            logger(LOG_FATAL,
+                   "cannot destroy the default context"
+                   );
+        }
     }
     else {
-        shmemc_context_h ch = (shmemc_context_h) ctx;
-
-        /*
-         * spec 1.4 requires implicit quiet on destroy for storable
-         * contexts
-         */
-        shmemc_ctx_quiet(ch);
-
-        ucp_worker_destroy(ch->w);
-
-        deregister_context(ch);
+        logger(LOG_FATAL,
+               "attempt to destroy a null context"
+               );
     }
+}
+
+/*
+ * return the id of a context (used for logging)
+ */
+
+unsigned long
+shmemc_context_id(shmem_ctx_t ctx)
+{
+    shmemc_context_h ch = (shmemc_context_h) ctx;
+
+    return ch->id;
 }
 
 /*
  * the first, default, context gets a special SHMEM handle, also needs
  * address exchange through PMI, so we give it its own routine
+ *
+ * Return 0 if successful, 1 otherwise
  */
 
+shmemc_context_t shmemc_default_context;
+
 int
-shmemc_create_default_context(shmem_ctx_t *ctxp)
+shmemc_create_default_context(void)
 {
-    shmem_ctx_t ctx_def;
-    shmemc_context_h ch;
+    shmemc_context_h ch = &shmemc_default_context;
     int n;
     ucs_status_t s;
     ucp_address_t *addr;
     size_t len;
     const long default_options = 0L;
 
-    n = shmemc_context_create(default_options, &ctx_def);
+    n = shmemc_context_fill(default_options, ch);
     if (n != 0) {
         return 1;
         /* NOT REACHED */
     }
-
-    ch = (shmemc_context_h) ctx_def;
 
     /* get address for remote access to worker */
     s = ucp_worker_get_address(ch->w, &addr, &len);
@@ -248,9 +278,6 @@ shmemc_create_default_context(shmem_ctx_t *ctxp)
 
     proc.comms.xchg_wrkr_info[proc.rank].addr = addr;
     proc.comms.xchg_wrkr_info[proc.rank].len = len;
-
-    /* handle back to caller */
-    *ctxp = ctx_def;
 
     return 0;
 }
