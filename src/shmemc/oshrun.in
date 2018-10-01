@@ -1,37 +1,315 @@
-
-#!/bin/sh
+#!/usr/bin/env perl
+# Emacs: -*- mode: cperl; -*-
 # For license: see LICENSE file at top-level
 
-progname="`basename $0`"
+use strict;
+use warnings;
+use diagnostics;
 
-# test left-to-right order
-LAUNCHERS="mpiexec mpirun"
+use IPC::Open3 qw(open3);
+use Symbol qw(gensym);
 
-# possibly from environment
-launcher="${SHMEM_LAUNCHER-}"
+use File::Basename qw(basename);
+my $progname = basename($0);
 
-if [ -z "$launcher" ]
-then
-    # possibly from configure
-    launcher="@SHMEM_LAUNCHER@"
-fi
+#
+# -- encapsulate debugging output ----------------------------------------
+#
 
-if [ -z "$launcher" ]
-then
-    for L in $LAUNCHERS
-    do
-        if hash "$L" >/dev/null 2>&1
-        then
-            launcher="$L"
-            break
-        fi  
-    done
-fi
+my $debug = 0;                  # default
 
-if [ -z "$launcher" ]
-then
-    echo "$progname: no launcher found, tried $LAUNCHERS"
-    exit 1
-fi     
+my $debug_env = 'OSHRUN_DEBUG';
 
-exec $launcher "$@"
+if (defined $ENV{$debug_env}) {
+  $debug = ( $ENV{$debug_env} =~ /^[y1-9]/i );
+}
+
+my $do_effect;
+
+eval 'use Term::ANSIColor';
+if ($@) {
+  $do_effect = 0;
+}
+else {
+  # only use effects on terminals
+  $do_effect = ( -t STDERR );
+}
+
+sub debug {
+  if ($debug) {
+    my $msg = "$progname:@_\n";
+    print STDERR $do_effect ? colored($msg, 'bold') : $msg;
+  }
+}
+
+#
+# -- work out which launcher is required ---------------------------------
+#
+
+my $launcher = '';
+
+#
+# Anything in environment?
+#
+if (defined $ENV{SHMEM_LAUNCHER}) {
+  $launcher = $ENV{SHMEM_LAUNCHER};
+}
+
+#
+# Configure might have given us a SHMEM_LAUNCHER (otherwise, in the
+# installed file, this is a strange-looking no-op)
+#
+if ($launcher eq '') {
+  $launcher = '@SHMEM_LAUNCHER@';
+}
+
+#
+# still nothing, can we find something?
+#
+
+eval 'use Memoize';
+if(! $@) {
+  memoize('which');
+}
+
+sub which {
+  my $f = shift;
+  my @ps = split ':', $ENV{PATH};
+
+  for my $p (@ps) {
+    my $try = "$p/$f";
+    return $try if ( -x $try );
+  }
+  return undef;
+}
+
+#
+# Nothing provided, so look for suitable launcher.  Prefer prun from
+# PRRTE.
+#
+
+my $prrte_starter;
+
+my $prun = qq(prun);
+
+if ($launcher eq '') {
+  my $pl = which($prun);
+
+  if (defined $pl) {
+    debug("prrte: found \"$prun\"");
+
+    my @Starters = qw(prte psrvr);
+
+    for my $strt (@Starters) {
+      debug("prrte: check matching \"$strt\"");
+
+      my $ps = $pl;
+      $ps =~ s%/$prun$%/$strt%;
+
+      if ( -x $ps ) {
+        debug("prrte: found \"$strt\"");
+        $prrte_starter = $ps;
+        $launcher = $prun;
+        last;
+      }
+      else {
+        debug("prrte: no \"$strt\", skipping");
+      }
+    } # end loop
+  } # end if
+}
+
+#
+# no prun, look for Open-MPI
+#
+
+if ($launcher eq '') {
+  my @Launchers = qw(mpiexec mpirun);
+
+  for my $L (@Launchers) {
+    debug("launch: look for \"$L\"");
+
+    my $pl = which($L);
+    next unless defined $pl;
+
+    debug("launch: using \"$pl\"");
+
+    # take this one
+    $launcher = $L;
+    last;
+  }
+}
+
+if ($launcher eq '') {
+  die "$progname: unable to find launcher";
+}
+
+# This will later tell us how to launch the app
+
+my $is_prrte = basename($launcher) eq 'prun';
+
+#
+# -- do the underlying launch of app -------------------------------------
+#
+
+sub zap {                       # clean up after signal
+  my $pid = shift;
+  my $s;
+
+  for (1 .. 2) {
+    kill TERM => $pid;
+    debug("launch: signalled termination to $pid");
+
+    $s = kill 0 => $pid;
+    if ($s != 1) {
+      goto zap_out;
+    }
+
+    sleep 1;
+  }
+  kill KILL => $pid if $s == 1;
+  debug("launch: signalled kill to $pid");
+  # maybe add extra existence check here
+ zap_out:
+  debug("launch: cleaned up process $pid");
+};
+
+sub run_app {
+  debug("launch: \"$launcher @ARGV\"");
+  my $pid = fork();
+  die "$progname:launch: fork failed: $!" unless defined $pid;
+
+  for my $sig (qw(INT QUIT)) {
+    $SIG{$sig} = sub { zap $pid; };
+  }
+
+  my $rc = 0;
+  if ($pid == 0) {              # child
+    exec $launcher, @ARGV;
+  }
+  else {                        # parent
+    debug("launch: application in process $pid");
+    debug("-" x 70);
+    waitpid($pid, 0);
+    $rc = $? >> 8;
+    # debug("rc = $rc\n");
+  }
+  return $rc;
+}
+
+#
+# -- for PRRTE -----------------------------------------------------------
+#
+
+# stubbing to prep for more complicated prte invocations:
+# my @prte_cmd
+#   = qw(
+#         prte
+#         --pmca pmix pmix3x
+#         --pmca grpcomm bmg
+#         --pmca odls_base_verbose 10
+#         --pmca errmgr_base_verbose 10
+#         --pmca propagate_base_verbose 10
+#         --debug-daemons
+#      );
+
+my $pae = $ENV{PRTE_ARGS};
+
+my @envargs = (defined $pae) ? split('\s+', $pae) : ();
+
+my @prte_cmd =
+  (
+   $prrte_starter,
+   @envargs
+  );
+my $prte_pid;
+
+my ($chin, $chout, $cherr);     # child stdio
+
+#
+# For controlling launched starter
+#
+
+sub prrte_shutdown {
+  #
+  # shut down starter
+  #
+  kill TERM => $prte_pid;
+
+  my $killed = waitpid($prte_pid, 0);
+
+  if ($killed == $prte_pid) {
+    debug("prrte: process $prte_pid shut down");
+  }
+  else {
+    die "$progname:$prte_pid: couldn't kill PRRTE starter: $!";
+  }
+}
+
+sub prrte_launch {
+  #
+  # starter is in child process
+  #
+  debug("prrte: starting up");
+
+  $cherr = gensym();            # need lvalue
+
+  $prte_pid = open3($chin, $chout, $cherr, @prte_cmd);
+
+  if (! defined $prte_pid) {
+    die "$progname: failed to run starter: $!";
+  }
+
+  #
+  # parent waits for starter to be ready, then launches user app
+  #
+  if ($prte_pid) {
+    my $expected_response = 'DVM ready';
+    my $got;
+    my $ready = 0;
+
+    # TODO: timeout?
+    while (<$chout>) {
+      if (/^$expected_response/) {
+        chomp;
+        $got = $_;
+        $ready = 1;
+        last;
+      }
+    }
+
+    # off we go!
+    if ($ready) {
+      debug("prrte: pid $prte_pid says \"$got\"");
+      return 0;
+    }
+
+    # uh-oh
+    warn "$progname: internal error at line " .
+      __LINE__ .
+      ", should not be here";
+    return 1;
+  }
+}
+
+#
+# -- let's do it! --------------------------------------------------------
+#
+
+# If we're using PRRTE, fire up support; otherwise just launch
+
+if ($is_prrte) {
+  my $err = prrte_launch();
+  die "$progname:launch: failed: $!" if $err != 0;
+}
+
+my $app_err = run_app();
+
+if ($is_prrte) {
+  prrte_shutdown();
+}
+else {
+  debug("launch: done");
+}
+
+exit $app_err;

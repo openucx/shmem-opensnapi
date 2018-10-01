@@ -9,10 +9,13 @@
 #include "state.h"
 #include "info.h"
 #include "threading.h"
+#include "progress.h"
 
 #ifdef ENABLE_EXPERIMENTAL
 #include "allocator/xmemalloc.h"
 #endif  /* ENABLE_EXPERIMENTAL */
+
+#include "shmem/api.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,8 +25,6 @@
 #ifdef ENABLE_PSHMEM
 #pragma weak shmem_init_thread = pshmem_init_thread
 #define shmem_init_thread pshmem_init_thread
-#pragma weak shmem_query_thread = pshmem_query_thread
-#define shmem_query_thread pshmem_query_thread
 #pragma weak shmem_init = pshmem_init
 #define shmem_init pshmem_init
 #pragma weak shmem_finalize = pshmem_finalize
@@ -37,88 +38,106 @@
 static void
 finalize_helper(void)
 {
-    /* do nothing if multiple finalizes */
-    if (proc.refcount > 0) {
-        const shmemc_thread_t this = shmemc_thread_id();
+    threadwrap_thread_t this;
 
-        if (this != proc.td.invoking_thread) {
-            logger(LOG_FINALIZE,
-                   "mis-match: thread %lu initialized, but %lu finalized",
-                   proc.td.invoking_thread, this);
-        }
+    /* do nothing if multiple finalizes */
+    if (proc.refcount < 1) {
+        return;
+    }
+
+    logger(LOG_FINALIZE,
+           "%s()",
+           __func__
+           );
+
+    /* implicit barrier on finalize */
+    shmem_barrier_all();
+
+    this = threadwrap_thread_id();
+    if (this != proc.td.invoking_thread) {
+        logger(LOG_FINALIZE,
+               "mis-match: thread %lu initialized, but %lu finalized",
+               proc.td.invoking_thread, this);
+    }
+
+    progress_finalize();
+    shmemc_finalize();
+    shmemu_finalize();
 
 #ifdef ENABLE_EXPERIMENTAL
-        shmemxa_finalize();
+    shmemxa_finalize();
 #endif  /* ENABLE_EXPERIMENTAL */
-        shmemu_finalize();
-        shmemc_finalize();
 
-        proc.refcount = 0;      /* finalized is finalized */
-        proc.status = SHMEMC_PE_SHUTDOWN;
-    }
+    proc.refcount = 0;      /* finalized is finalized */
+    proc.status = SHMEMC_PE_SHUTDOWN;
 }
 
 inline static int
 init_thread_helper(int requested, int *provided)
 {
-    /* do nothing if multiple inits */
-    if (proc.refcount == 0) {
-        int s;
+    int s;
 
-        shmemc_init();
-        shmemu_init();
+    /* do nothing if multiple inits */
+    if (proc.refcount > 0) {
+        return 0;
+    }
+
+    shmemc_init();
+    shmemu_init();
+    progress_init();
+
 #ifdef ENABLE_EXPERIMENTAL
-        shmemxa_init(proc.env.heaps.nheaps);
+    shmemxa_init(proc.env.heaps.nheaps);
 #endif  /* ENABLE_EXPERIMENTAL */
 
-        s = atexit(finalize_helper);
-        if (s != 0) {
-            logger(LOG_FATAL,
-                   "unable to register atexit() handler: %s",
-                   strerror(errno)
-                   );
-            /* NOT REACHED */
+    s = atexit(finalize_helper);
+    if (s != 0) {
+        logger(LOG_FATAL,
+               "unable to register atexit() handler: %s",
+               strerror(errno)
+               );
+        /* NOT REACHED */
+    }
+
+    proc.status = SHMEMC_PE_RUNNING;
+
+    proc.refcount += 1;
+
+    /* for now */
+    switch(requested) {
+    case SHMEM_THREAD_SINGLE:
+        break;
+    case SHMEM_THREAD_FUNNELED:
+        break;
+    case SHMEM_THREAD_SERIALIZED:
+        break;
+    case SHMEM_THREAD_MULTIPLE:
+        break;
+    default:
+        logger(LOG_FATAL,
+               "unknown thread level %d requested",
+               requested
+               );
+        /* NOT REACHED */
+        break;
+    }
+
+    /* save and return */
+    proc.td.osh_tl = requested;
+    if (provided != NULL) {
+        *provided = proc.td.osh_tl;
+    }
+
+    proc.td.invoking_thread = threadwrap_thread_id();
+
+    if (shmemc_my_pe() == 0) {
+        if (proc.env.print_version) {
+            info_output_package_version(stdout, 0);
         }
-
-        proc.status = SHMEMC_PE_RUNNING;
-
-        /* for now */
-        switch(requested) {
-        case SHMEM_THREAD_SINGLE:
-            break;
-        case SHMEM_THREAD_FUNNELED:
-            break;
-        case SHMEM_THREAD_SERIALIZED:
-            break;
-        case SHMEM_THREAD_MULTIPLE:
-            break;
-        default:
-            logger(LOG_FATAL,
-                   "unknown thread level %d requested",
-                   requested
-                   );
-            /* NOT REACHED */
-            break;
-        }
-
-        /* save and return */
-        proc.td.osh_tl = requested;
-        if (provided != NULL) {
-            *provided = proc.td.osh_tl;
-        }
-
-        proc.td.invoking_thread = shmemc_thread_id();
-
-        if (proc.rank == 0) {
-            if (proc.env.print_version) {
-                info_output_package_version(stdout, 0);
-            }
-            if (proc.env.print_info) {
-                shmemc_print_env_vars(stdout, "# ");
-            }
+        if (proc.env.print_info) {
+            shmemc_print_env_vars(stdout, "# ");
         }
     }
-    proc.refcount += 1;
 
     logger(LOG_INIT,
            "%s(requested=%d, provided->%d)",
@@ -126,17 +145,22 @@ init_thread_helper(int requested, int *provided)
            requested, proc.td.osh_tl
            );
 
+    /* make sure all symmetric memory ready */
+    shmem_barrier_all();
+
     /* just declare success */
     return 0;
 }
 
 /*
- * -- API --------------------------------------------------------------------
+ * initialize/finalize SHMEM portion of program with threading model
  */
 
-/*
- * initialize SHMEM portion of program with threading model
- */
+void
+shmem_finalize(void)
+{
+    finalize_helper();
+}
 
 int
 shmem_init_thread(int requested, int *provided)
@@ -151,43 +175,6 @@ shmem_init(void)
 }
 
 /*
- * finish SHMEM portion of program, release resources
- */
-
-void
-shmem_finalize(void)
-{
-    SHMEMU_CHECK_INIT();
-
-    logger(LOG_FINALIZE,
-           "%s()",
-           __func__
-           );
-
-    finalize_helper();
-}
-
-/*
- * query thread level support
- *
- * TODO: should this be here or in pe-query.c ?
- */
-
-void
-shmem_query_thread(int *provided)
-{
-    SHMEMU_CHECK_INIT();
-
-    logger(LOG_FINALIZE,
-           "%s() -> %d",
-           __func__,
-           proc.td.osh_tl
-           );
-
-    *provided = proc.td.osh_tl;
-}
-
-/*
  * deprecated
  */
 
@@ -197,8 +184,12 @@ shmem_query_thread(int *provided)
 #endif /* ENABLE_PSHMEM */
 
 void
-start_pes(int n /* unused */)
+start_pes(int n)
 {
-    deprecate(__func__, 1, 2);
+    NO_WARN_UNUSED(n);
+
     shmem_init();
+
+    /* can't tell anyone until init has really happened */
+    deprecate(__func__, 1, 2);
 }

@@ -13,7 +13,7 @@ AS_IF([test -d "$with_ucx"],
 	      CPPFLAGS="-I$with_ucx/include $CPPFLAGS"
 	      UCX_LIBS="-L$with_ucx/lib64 -Wl,-rpath -Wl,$with_ucx/lib64"
 	      UCX_LIBS="$UCX_LIBS -L$with_ucx/lib -Wl,-rpath -Wl,$with_ucx/lib"
-	      UCX_LIBS="$UCX_LIBS -lucp -luct -lucs"
+	      UCX_LIBS="$UCX_LIBS -lucp -luct -lucs -lucm"
 	      LDFLAGS="$UCX_LIBS $LDFLAGS"
 	      AC_DEFINE([HAVE_UCX], [1], [UCX support])
 	      AC_MSG_NOTICE([UCX: checking for API features...])
@@ -47,15 +47,37 @@ AS_IF([test -d "$with_ucx"],
 		],
 		[AC_MSG_NOTICE([UCX: native bit-wise atomics NOT found])
 		])
+	      # check for non-blocking put/get
+	      AC_COMPILE_IFELSE(
+		[AC_LANG_PROGRAM([[#include <ucp/api/ucp.h>]], [ucp_put_nb])],
+		[AC_MSG_NOTICE([UCX: ucp_put_nb found])
+ 	         AC_DEFINE([HAVE_UCP_PUT_NB], [1], [UCX has ucp_put_nb])
+		],
+		[AC_MSG_NOTICE([UCX: ucp_put_nb NOT found])
+		])
+	      AC_COMPILE_IFELSE(
+		[AC_LANG_PROGRAM([[#include <ucp/api/ucp.h>]], [ucp_get_nb])],
+		[AC_MSG_NOTICE([UCX: ucp_get_nb found])
+ 	         AC_DEFINE([HAVE_UCP_GET_NB], [1], [UCX has ucp_get_nb])
+		],
+		[AC_MSG_NOTICE([UCX: ucp_get_nb NOT found])
+		])
 	      AC_LANG_POP([C])
 	      UCX_DIR="$with_ucx"
 	      AC_DEFINE_UNQUOTED([UCX_DIR], ["$UCX_DIR"], [UCX installation directory])
 	      AC_SUBST([UCX_DIR])
 	      AC_SUBST([UCX_LIBS])
 	      ucx_happy=yes
+          ],
+	  [
+	    AC_MSG_ERROR([Unable to find UCX UCP header file in $ucp_hdr])
           ]
           )
+      ],
+      [
+        AC_MSG_ERROR([Unable to find UCX in $with_ucx])
       ]
+
       )
 
 AS_IF([test "x$ucx_happy" = "xyes"],
@@ -63,11 +85,11 @@ AS_IF([test "x$ucx_happy" = "xyes"],
        maj=`awk '$2 == "UCP_API_MAJOR" {print $3}' $hdr`
        min=`awk '$2 == "UCP_API_MINOR" {print $3}' $hdr`
 
-       UCX_VERSION=`printf "%u.%u" $maj $min`
-       AS_BOX(UCX version is $UCX_VERSION)
+       UCX_VERSION_STRING=`printf "%u.%u" $maj $min`
+       AS_BOX(UCX version is $UCX_VERSION_STRING)
 
-       AC_DEFINE_UNQUOTED([UCX_VERSION], ["$UCX_VERSION"], [Version of UCX])
-       AC_SUBST([UCX_VERSION])
+       AC_DEFINE_UNQUOTED([UCX_VERSION_STRING], ["$UCX_VERSION_STRING"], [Version of UCX])
+       AC_SUBST([UCX_VERSION_STRING])
        
        # AC_MSG_NOTICE([Selecting UCX as communications layer])
       ]

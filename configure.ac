@@ -3,7 +3,7 @@
 
 # For license: see LICENSE file at top-level
 
-m4_define([pkg_name],       [OSSS/SBU Reference Implementation])
+m4_define([pkg_name],       [osss-ucx])
 m4_define([pkg_major],      [1])
 m4_define([pkg_minor],      [0])
 m4_define([pkg_version],    [pkg_major.pkg_minor])
@@ -51,7 +51,10 @@ AC_CONFIG_SRCDIR([autogen.sh])
 AC_CONFIG_HEADERS([config.h])
 # AC_CONFIG_MACRO_DIRS([m4])
 AC_CONFIG_MACRO_DIR([m4])
-AM_INIT_AUTOMAKE([subdir-objects])
+# for multiple levels of autoconf packages (embedding)
+# AC_CONFIG_AUX_DIR([.])
+# AC_CONFIG_SUBDIRS([src/shcoll])
+AM_INIT_AUTOMAKE([subdir-objects tar-pax])
 
 AM_SILENT_RULES([yes])
 
@@ -70,8 +73,13 @@ LT_INIT
 m4_include([config/m4/pmi.m4])
 m4_include([config/m4/pmix.m4])
 m4_include([config/m4/ucx.m4])
+m4_include([config/m4/shcoll.m4])
 
 m4_include([config/m4/confargs.m4])
+# m4_include([config/m4/progress.m4])
+
+m4_include([config/m4/ax_gcc_func_attribute.m4])
+m4_include([config/m4/attribute_checks.m4])
 
 # c++ -specific checks
 m4_include([config/m4/cxx.m4])
@@ -106,7 +114,7 @@ AC_CHECK_TYPES([ptrdiff_t])
 # AC_FUNC_MALLOC
 # AC_FUNC_REALLOC
 AC_FUNC_MMAP
-AC_CHECK_FUNCS([atexit gettimeofday gethostname uname memset strlcat sched_yield])
+AC_CHECK_FUNCS([atexit _exit exit gettimeofday gethostname uname memset strlcat strlcpy sched_yield nanosleep])
 AC_CHECK_LIB([m], [log10])
 
 AM_INIT_AUTOMAKE
@@ -120,17 +128,20 @@ AC_DEFINE_UNQUOTED([CONFIG_BUILD_HOST],["$host"],[Where this package was compile
 # check for pthreads and how to set it up
 #
 m4_include([config/m4/ax_pthread.m4])
-
 AX_PTHREAD
-
 AC_SUBST([PTHREAD_CC])
 AC_SUBST([PTHREAD_CFLAGS])
 AC_SUBST([PTHREAD_LIBS])
 
 #
+# see if compiler knows about builtin_expect
+#
+m4_include([config/m4/ax_gcc_builtin.m4])
+AX_GCC_BUILTIN(__builtin_expect)
+
+#
 # Stub for doxygen
 #
-
 m4_include([config/m4/ax_prog_doxygen.m4])
 
 DX_INIT_DOXYGEN([openshmem])
@@ -150,8 +161,6 @@ AC_DEFINE_UNQUOTED([SHMEM_DEFAULT_HEAP_SIZE],
 			["$shmem_heap_size"],
 			[Default size of symmetric heap])
 
-AC_MSG_NOTICE([Default symmetric heap size will be $shmem_heap_size])
-
 #
 # all the output files
 #
@@ -164,26 +173,46 @@ AC_CONFIG_FILES([
 	man/man1/oshrun.1 man/man1/osh_info.1 man/man1/osh_intro.1
 	include/Makefile
 	include/shmem/defs.h
-	include/shmem/depr.h
-	include/shmem/cache.h
-	include/shmem/api.h
-	include/shmem.h
-	include/pshmem.h include/pshmemx.h
-	include/shmemx.h include/null-shmemx.h
-	include/shmemx.fh include/null-shmemx.fh
 	include/shmem/defs.fh
-	include/shmem.fh include/pshmem.fh
-	include/pshmemx.fh
 	pkgconfig/Makefile
 	pkgconfig/osss-ucx.pc
 	src/Makefile
 	src/osh_info/Makefile
+	src/collectives/shcoll/Makefile
+	src/collectives/shcoll/src/Makefile
 	src/shmemc/Makefile
-	src/shmemc/oshcc:src/shmemc/oshcc.in:src/shmemc/osh-bot.common
-	src/shmemc/oshcxx:src/shmemc/oshcxx.in:src/shmemc/osh-bot.common
-	src/shmemc/oshfort:src/shmemc/oshfort.in:src/shmemc/osh-bot.common
-	src/shmemc/oshrun
+	src/shmemc/osh_common
 	src/shmemu/Makefile
         ])
 
 AC_OUTPUT
+
+#
+# Courtesy info
+#
+
+echo
+echo "Summary"
+echo "-------"
+echo
+echo "                  UCX: version $UCX_VERSION_STRING in $UCX_DIR"
+echo "                 PMIx: version $PMIX_VERSION_STRING in $PMIX_DIR"
+
+case "$shcoll_happy" in
+    no)
+        ;;
+    *)
+        echo "               SHCOLL: in $SHCOLL_DIR"
+	;;
+esac
+case "$SHMEM_LAUNCHER" in
+    "")
+        ;;
+    *)
+        echo "             Launcher: $SHMEM_LAUNCHER"
+	;;
+esac
+
+echo "    Default heap size: $shmem_heap_size"
+echo
+echo

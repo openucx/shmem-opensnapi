@@ -211,7 +211,7 @@ info_output_features(FILE *strm)
 void
 info_output_comms(FILE *strm)
 {
-    output(strm, "Using UCX in",
+    output(strm, "Using UCX from",
 #ifdef HAVE_UCX
            UCX_DIR
 #else
@@ -221,13 +221,13 @@ info_output_comms(FILE *strm)
 
     output(strm, "UCX Version",
 #ifdef HAVE_UCX
-           UCX_VERSION
+           UCX_VERSION_STRING
 #else
            INTERNAL_ERROR
 #endif /* HAVE_UCX version */
            );
 
-    output(strm, "Using PMIx in",
+    output(strm, "Using PMIx from",
 #ifdef HAVE_PMIX
            PMIX_DIR
 #else
@@ -236,9 +236,17 @@ info_output_comms(FILE *strm)
            );
     output(strm, "PMIx Version",
 #ifdef HAVE_PMIX
-           PMIX_VERSION
+           PMIX_VERSION_STRING
 #else
            INTERNAL_ERROR
 #endif /* HAVE_PMIX version */
+           );
+
+    output(strm, "Using SHCOLL from",
+#ifdef HAVE_SHCOLL_INTERNAL
+           PACKAGE_STRING
+#else
+           SHCOLL_DIR
+#endif
            );
 }

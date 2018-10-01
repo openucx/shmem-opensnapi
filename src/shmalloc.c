@@ -6,7 +6,7 @@
 
 #include "shmemu.h"
 #include "shmemc.h"
-#include "shmem/defs.h"
+#include "shmem/api.h"
 
 #include "shmem_mutex.h"
 #include "allocator/memalloc.h"
@@ -39,9 +39,13 @@ shmem_malloc(size_t s)
 {
     void *addr;
 
+    if (shmemu_unlikely(s == 0)) {
+        return NULL;
+    }
+
     SHMEMT_MUTEX_PROTECT(addr = shmema_malloc(s));
 
-    shmemc_barrier_all();
+    shmem_barrier_all();
 
     logger(LOG_MEMORY,
            "%s(size=%lu) -> %p",
@@ -57,9 +61,13 @@ shmem_calloc(size_t n, size_t s)
 {
     void *addr;
 
+    if (shmemu_unlikely((n == 0) || (s == 0))) {
+        return NULL;
+    }
+
     SHMEMT_MUTEX_PROTECT(addr = shmema_calloc(n, s));
 
-    shmemc_barrier_all();
+    shmem_barrier_all();
 
     logger(LOG_MEMORY,
            "%s(count=%lu, size=%lu) -> %p",
@@ -73,15 +81,11 @@ shmem_calloc(size_t n, size_t s)
 void
 shmem_free(void *p)
 {
-    shmemc_barrier_all();
+    shmem_barrier_all();
 
     SHMEMT_MUTEX_PROTECT(shmema_free(p));
 
-    logger(LOG_MEMORY,
-           "%s(addr=%p)",
-           __func__,
-           p
-           );
+    logger(LOG_MEMORY, "%s(addr=%p)", __func__, p);
 }
 
 /*
@@ -94,11 +98,15 @@ shmem_realloc(void *p, size_t s)
 {
     void *addr;
 
-    shmemc_barrier_all();
+    if (shmemu_unlikely(s == 0)) {
+        return NULL;
+    }
+
+    shmem_barrier_all();
 
     SHMEMT_MUTEX_PROTECT(addr = shmema_realloc(p, s));
 
-    shmemc_barrier_all();
+    shmem_barrier_all();
 
     logger(LOG_MEMORY,
            "%s(addr=%p, size=%lu) -> %p",
@@ -114,9 +122,13 @@ shmem_align(size_t a, size_t s)
 {
     void *addr;
 
+    if (shmemu_unlikely(s == 0)) {
+        return NULL;
+    }
+
     SHMEMT_MUTEX_PROTECT(addr = shmema_align(a, s));
 
-    shmemc_barrier_all();
+    shmem_barrier_all();
 
     logger(LOG_MEMORY,
            "%s(align=%lu, size=%lu) -> %p",

@@ -34,12 +34,17 @@ static int pe_width;
 static int stamp_width;
 
 /*
+ * cache process ID
+ */
+static int mypid;
+
+/*
  * keep track of trace events
  */
 
-KHASH_MAP_INIT_STR(events, bool)
+KHASH_MAP_INIT_STR(events_hash, bool)
 
-static khash_t(events) *events;
+static khash_t(events_hash) *events;
 
 inline static void
 event_set(shmemu_log_t name, bool state)
@@ -47,14 +52,14 @@ event_set(shmemu_log_t name, bool state)
     int nocheck;
     khiter_t k;
 
-    k = kh_put(events, events, name, &nocheck);
+    k = kh_put(events_hash, events, name, &nocheck);
     kh_value(events, k) = state;
 }
 
 inline static bool
 event_enabled(shmemu_log_t name)
 {
-    const khiter_t k = kh_get(events, events, name);
+    const khiter_t k = kh_get(events_hash, events, name);
 
     return (k != kh_end(events)) ? kh_value(events, k) : false;
 }
@@ -122,7 +127,7 @@ shmemu_logger_init(void)
         stamp_width = 1;
     }
 
-    events = kh_init(events);
+    events = kh_init(events_hash);
 
     event_set(LOG_FATAL,      true);
     event_set(LOG_INIT,       false);
@@ -143,6 +148,8 @@ shmemu_logger_init(void)
     parse_log_events();
 
     fatal_len = strlen(LOG_FATAL);
+
+    mypid = (int) getpid();
 }
 
 void
@@ -152,55 +159,55 @@ shmemu_logger_finalize(void)
         return;
     }
 
-    if (log_stream != NULL) {
-        fclose(log_stream);
-    }
+    fclose(log_stream);
+
+    kh_destroy(events_hash, events);
 }
 
-#define TRACE_MSG_BUF_SIZE 256
+#define TRACE_MSG_BUF_SIZE_1 256
+#define TRACE_MSG_BUF_SIZE_2 (TRACE_MSG_BUF_SIZE_1 * 2)
+
+static char tmp1[TRACE_MSG_BUF_SIZE_1];
+static char tmp2[TRACE_MSG_BUF_SIZE_2];
 
 void
 shmemu_logger(shmemu_log_t evt, const char *fmt, ...)
 {
-    if (proc.env.logging) {
-        if (event_enabled(evt) || event_enabled(LOG_ALL)) {
-            char tmp1[TRACE_MSG_BUF_SIZE];
-            char tmp2[TRACE_MSG_BUF_SIZE];
-            va_list ap;
+    if (! proc.env.logging) {
+        return;
+    }
 
-            snprintf(tmp1, TRACE_MSG_BUF_SIZE,
-                     "[%*d:%s:%d:%6.6f]",
-                     pe_width, proc.rank,
-                     host,
-                     (int) getpid(),
-                     shmemu_timer()
-                     );
+    if (event_enabled(evt) || event_enabled(LOG_ALL)) {
+        va_list ap;
 
-            snprintf(tmp2, TRACE_MSG_BUF_SIZE,
-                     "%-*s %10s: ",
-                     stamp_width, tmp1,
-                     evt
-                     );
+        snprintf(tmp1, TRACE_MSG_BUF_SIZE_1,
+                 "[%*d:%s:%d:%6.6f]",
+                 pe_width, proc.rank,
+                 host,
+                 mypid,
+                 shmemu_timer()
+                 );
 
-            va_start(ap, fmt);
-            vsnprintf(tmp1, TRACE_MSG_BUF_SIZE, fmt, ap);
-            va_end(ap);
+        snprintf(tmp2, TRACE_MSG_BUF_SIZE_2,
+                 "%-*s %s: ",
+                 stamp_width, tmp1,
+                 evt
+                 );
 
-#ifdef HAVE_STRLCAT
-            strlcat(tmp2, tmp1, strlen(tmp1));
-            strlcat(tmp2, "\n", 1);
-#else
-            strncat(tmp2, tmp1, strlen(tmp1));
-            strncat(tmp2, "\n", 1);
-#endif /* HAVE_STRLCAT */
+        va_start(ap, fmt);
+        vsnprintf(tmp1, TRACE_MSG_BUF_SIZE_1, fmt, ap);
+        va_end(ap);
 
-            fputs(tmp2, log_stream);
-            /* make sure this all goes out in 1 burst */
-            fflush(log_stream);
+        STRNCAT_SAFE(tmp2, tmp1, TRACE_MSG_BUF_SIZE_1);
+        STRNCAT_SAFE(tmp2, "\n", 1);
 
-            if (strncmp(evt, LOG_FATAL, fatal_len) == 0) {
-                shmemc_global_exit(1);
-            }
+        fputs(tmp2, log_stream);
+        /* make sure this all goes out in 1 burst */
+        fflush(log_stream);
+
+        if (strncmp(evt, LOG_FATAL, fatal_len) == 0) {
+            shmemc_global_exit(1);
+            /* NOT REACHED */
         }
     }
 }

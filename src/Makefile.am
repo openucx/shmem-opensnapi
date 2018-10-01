@@ -10,34 +10,52 @@ shmemu_cppflags        = -I$(top_srcdir)/src/$(shmemu_dir)
 shmemu_ldflags         = -L$(shmemu_dir)
 shmemu_libs            = -lshmemu
 
-SUBDIRS                = $(shmemc_dir) $(shmemu_dir) osh_info
-
-MY_INCLUDE             = -I../include
+MY_INCLUDE             = -I../include -I$(top_srcdir)/include
 
 all_cppflags           = $(shmemc_cppflags) $(shmemu_cppflags) $(MY_INCLUDE)
 
 MY_SOURCES             = \
                                 accessible.c \
-                                alltoall.c \
                                 atomics.c \
-                                barrier.c \
-                                broadcast.c \
                                 cache.c \
-                                collect.c \
 				contexts.c \
-                                fcollect.c \
                                 globalexit.c \
 				info.c \
                                 init.c \
                                 lock.c \
+				progress.c \
                                 ptr.c \
                                 putget.c \
                                 quiet.c \
 				ranks.c  \
-                                reductions.c \
                                 shmalloc.c \
+				tl_query.c \
                                 version.c \
                                 waituntil.c
+
+SUBDIRS                = $(shmemu_dir) $(shmemc_dir) osh_info
+
+#
+# -- begin: SHCOLL --
+#
+# shcoll is bundled with package, but handled differently if pulled in
+# from somewhere else.
+#
+
+if HAVE_SHCOLL_INTERNAL
+SUBDIRS               += collectives/shcoll
+
+all_cppflags          += -I@SHCOLL_DIR@
+else
+all_cppflags          += -I@SHCOLL_DIR@/include
+endif
+
+#
+# -- end: SHCOLL --
+#
+# But we need the shim no matter what
+
+MY_SOURCES            += collectives/shcoll-shim.c
 
 if ENABLE_THREADS
 MY_SOURCES            += shmem_mutex.c
@@ -69,8 +87,13 @@ endif # fortran
 
 if ENABLE_EXPERIMENTAL
 
-MY_SOURCES            += xwtime.c
-MY_SOURCES            += xshmalloc.c
+MY_SOURCES            += \
+			extensions/putget_signal.c \
+			extensions/shmalloc.c \
+			extensions/wtime.c \
+			extensions/interop.c
+
+all_cppflags          += -I$(srcdir)/extensions
 
 endif # experimental
 

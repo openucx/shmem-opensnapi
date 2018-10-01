@@ -22,7 +22,7 @@
  * instantiated at all times
  */
 
-shmem_ctx_t SHMEM_CTX_DEFAULT = (shmem_ctx_t *) &shmemc_default_context;
+shmem_ctx_t SHMEM_CTX_DEFAULT = (shmem_ctx_t) &shmemc_default_context;
 
 /*
  * create new context with supplied options
@@ -76,12 +76,16 @@ shmem_ctx_destroy(shmem_ctx_t ctx)
 void
 shmemx_ctx_start_session(shmem_ctx_t ctx)
 {
+    NO_WARN_UNUSED(ctx);
+
     SHMEMU_CHECK_INIT();
 }
 
 void
 shmemx_ctx_end_session(shmem_ctx_t ctx)
 {
+    NO_WARN_UNUSED(ctx);
+
     SHMEMU_CHECK_INIT();
 }
 
