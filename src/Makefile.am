@@ -10,7 +10,16 @@ shmemu_cppflags        = -I$(top_srcdir)/src/$(shmemu_dir)
 shmemu_ldflags         = -L$(shmemu_dir)
 shmemu_libs            = -lshmemu
 
+shmemio_dir             = ./shmemio
+shmemio_cppflags        = -I$(top_srcdir)/src/$(shmemio_dir)
+shmemio_ldflags         = -L$(shmemio_dir)
+shmemio_libs            = -lshmemio
+
 MY_INCLUDE             = -I../include -I$(top_srcdir)/include
+
+if ENABLE_SHMEMIO
+MY_INCLUDE            += $(shmemio_cppflags)
+endif #shmemio
 
 all_cppflags           = $(shmemc_cppflags) $(shmemu_cppflags) $(MY_INCLUDE)
 
@@ -34,6 +43,12 @@ MY_SOURCES             = \
                                 waituntil.c
 
 SUBDIRS                = $(shmemu_dir) $(shmemc_dir) osh_info
+
+if ENABLE_SHMEMIO
+SUBDIRS               += $(shmemio_dir)
+MY_SOURCES            += io.c
+endif #shmemio
+
 
 #
 # -- begin: SHCOLL --

@@ -5,7 +5,6 @@
 
 #include "thispe.h"
 #include "state.h"
-#include "shmemc.h"
 #include "memfence.h"
 #include "shmem/defs.h"
 

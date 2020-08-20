@@ -14,4 +14,7 @@ thispe_info_t proc = {
     .refcount = 0,               /* init never called */
     .rank = -1,                  /* undefined position */
     .progress_thread = false,    /* no special progress */
+#ifdef ENABLE_SHMEMIO
+    .io.nfpes = -1,              /* no connected filespaces */
+#endif
 };

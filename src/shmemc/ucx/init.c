@@ -1,4 +1,5 @@
 /* For license: see LICENSE file at top-level */
+// Copyright (c) 2018 - 2020 Arm, Ltd
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"
@@ -12,6 +13,10 @@
 #include "readenv.h"
 
 #include "allocator/memalloc.h"
+
+#ifdef ENABLE_SHMEMIO
+#include "shmemio.h"
+#endif
 
 #include <stdlib.h>             /* getenv */
 #include <string.h>
@@ -432,6 +437,15 @@ ucx_init_ready(void)
         UCP_FEATURE_AMO64    |  /* 64-bit atomics */
         UCP_FEATURE_WAKEUP;     /* events (not used, but looking ahead) */
 
+#ifdef ENABLE_SHMEMIO
+    pm.features     |= UCP_FEATURE_STREAM;
+    pm.field_mask   |= ( UCP_PARAM_FIELD_REQUEST_SIZE |
+			 UCP_PARAM_FIELD_REQUEST_INIT );
+    
+    pm.request_size = sizeof(shmemio_streamreq_t);
+    pm.request_init = shmemio_request_init;
+#endif  
+    
     pm.mt_workers_shared = (proc.td.osh_tl > SHMEM_THREAD_SINGLE);
 
     pm.estimated_num_eps = proc.nranks;

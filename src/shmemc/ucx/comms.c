@@ -1,8 +1,13 @@
 /* For license: see LICENSE file at top-level */
+// Copyright (c) 2018 - 2020 Arm, Ltd
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif /* HAVE_CONFIG_H */
+
+#ifdef ENABLE_SHMEMIO
+#include "shmemio.h"
+#endif
 
 #include "shmemu.h"
 #include "state.h"
@@ -122,10 +127,28 @@ inline static void
 get_remote_key_and_addr(uint64_t local_addr, int pe,
                         ucp_rkey_h *rkey_p, uint64_t *raddr_p)
 {
+#ifdef ENABLE_SHMEMIO
+  /* Move this lookup_region code here and add goto 
+     to avoid extra test in path for get/put for non-fspace access
+  */
+  long r;
+  for (r = proc.comms.nregions - 1; r >= 0; r -= 1) {
+    if (in_region(local_addr, (size_t) r, proc.rank)) {
+      goto remote_region_found;
+      /* NOT REACHED */
+    }
+  }
+  /* Only reach here if we fail to find nonfspace region */
+  secondary_remote_key_and_addr(local_addr, pe, rkey_p, raddr_p);
+  return;
+
+#else
     const long r = lookup_region(local_addr, proc.rank);
-
+    /* assert only happens when debug enabled. This test is not used in production code path */
     shmemu_assert(r >= 0, "can't find memory region for %p", local_addr);
+#endif
 
+ remote_region_found:
     *rkey_p = lookup_rkey(r, pe);
     *raddr_p = translate_address(local_addr, r, pe);
 }

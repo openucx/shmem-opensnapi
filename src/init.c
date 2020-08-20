@@ -31,6 +31,10 @@
 #define shmem_finalize pshmem_finalize
 #endif /* ENABLE_PSHMEM */
 
+#ifdef ENABLE_SHMEMIO
+#include "shmemio.h"
+#endif /* ENABLE_SHMEMIO */
+
 /*
  * finish SHMEM portion of program, release resources
  */
@@ -64,6 +68,10 @@ finalize_helper(void)
     shmemc_finalize();
     shmemu_finalize();
 
+#ifdef ENABLE_SHMEMIO
+	shmemio_finalize_client();
+#endif /* ENABLE_SHMEMIO */
+	
 #ifdef ENABLE_EXPERIMENTAL
     shmemxa_finalize();
 #endif  /* ENABLE_EXPERIMENTAL */
@@ -89,6 +97,9 @@ init_thread_helper(int requested, int *provided)
 #ifdef ENABLE_EXPERIMENTAL
     shmemxa_init(proc.env.heaps.nheaps);
 #endif  /* ENABLE_EXPERIMENTAL */
+#ifdef ENABLE_SHMEMIO
+	shmemio_init_client();
+#endif /* ENABLE_SHMEMIO */
 
     s = atexit(finalize_helper);
     if (s != 0) {

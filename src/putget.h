@@ -1,12 +1,34 @@
 /* For license: see LICENSE file at top-level */
+// Copyright (c) 2018 - 2020 Arm, Ltd
 
 #ifndef _SHMEM_PUTGET_H
 #define _SHMEM_PUTGET_H 1
+
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif /* HAVE_CONFIG_H */
 
 #include "shmemu.h"
 #include "shmemc.h"
 
 #include "shmem_mutex.h"
+
+#ifdef ENABLE_SHMEMIO
+#include "shmemio.h"
+#define SHMEM_PUTGET_CHECK_PE_ARG_RANGE(_pe_,_pos_)	\
+  SHMEMIO_CHECK_PE_ARG_RANGE(_pe_,_pos_)
+
+#define SHMEM_PUTGET_CHECK_ACCESSIBLE(_addr_,_pos1_,_pe_,_pos2_)	\
+  SHMEMIO_CHECK_ACCESSIBLE(_addr_,_pos1_,_pe_,_pos2_)
+
+#else /* ! SHMEMIO */
+#define SHMEM_PUTGET_CHECK_PE_ARG_RANGE(_pe_,_pos_)	\
+  SHMEMU_CHECK_PE_ARG_RANGE(_pe_,_pos_)
+#define SHMEM_PUTGET_CHECK_ACCESSIBLE(_addr_,_pos1_,_pe_,_pos2_)	\
+  SHMEMU_CHECK_SYMMETRIC(_addr_,_pos1_)
+
+#endif /* SHMEMIO */
+
 
 #define SHMEM_CTX_TYPED_PUT(_name, _type)                           \
     void                                                            \
@@ -15,8 +37,8 @@
                             size_t nelems, int pe)                  \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(dest, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);			    \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 2, pe, 5);		    \
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -37,8 +59,8 @@
                             size_t nelems, int pe)                  \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(src, 3);                             \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);				\
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 3, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -60,8 +82,8 @@
                          size_t nelems, int pe)                     \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(dest, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 2, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -82,8 +104,8 @@
                          size_t nelems, int pe)                     \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(src, 3);                             \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 3, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -107,8 +129,8 @@
                      int pe)                                        \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(dest, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 2, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -133,8 +155,8 @@
                      int pe)                                        \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(src, 3);                             \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 3, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -161,8 +183,8 @@
         size_t i;                                                       \
                                                                         \
         SHMEMU_CHECK_INIT();                                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 7);                               \
-        SHMEMU_CHECK_SYMMETRIC(target, 2);                              \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 7);                               \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(target, 2, pe, 7);			\
                                                                         \
         logger(LOG_RMA,                                                 \
                "%s(ctx=%lu, dest=%p, src=%p, "                          \
@@ -192,8 +214,8 @@
         size_t i;                                                       \
                                                                         \
         SHMEMU_CHECK_INIT();                                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 7);                               \
-        SHMEMU_CHECK_SYMMETRIC(source, 3);                              \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 7);                               \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(source, 3, pe, 7);			\
                                                                         \
         logger(LOG_RMA,                                                 \
                "%s(ctx=%lu, dest=%p, src=%p, "                          \
@@ -223,8 +245,8 @@
         size_t i;                                                       \
                                                                         \
         SHMEMU_CHECK_INIT();                                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 7);                               \
-        SHMEMU_CHECK_SYMMETRIC(target, 2);                              \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 7);                               \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(target, 2, pe, 7);			\
                                                                         \
         logger(LOG_RMA,                                                 \
                "%s(ctx=%lu, dest=%p, src=%p, "                          \
@@ -254,8 +276,8 @@
         size_t i;                                                       \
                                                                         \
         SHMEMU_CHECK_INIT();                                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 7);                               \
-        SHMEMU_CHECK_SYMMETRIC(source, 3);                              \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 7);                               \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(source, 3, pe, 7);			\
                                                                         \
         logger(LOG_RMA,                                                 \
                "%s(ctx=%lu, dest=%p, src=%p, "                          \
@@ -284,8 +306,8 @@
         const size_t nb = sizeof(_type) * nelems;                   \
                                                                     \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(dest, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 2, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -309,8 +331,8 @@
         const size_t nb = sizeof(_type) * nelems;                   \
                                                                     \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(src, 3);                             \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 3, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -334,8 +356,8 @@
         const size_t nb = (_size) * nelems;                         \
                                                                     \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(dest, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 2, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -358,8 +380,8 @@
         const size_t nb = (_size) * nelems;                         \
                                                                     \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(src, 3);                             \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 3, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -382,8 +404,8 @@
                          int pe)                                    \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(dest, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 2, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -407,8 +429,8 @@
                          int pe)                                    \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 5);                           \
-        SHMEMU_CHECK_SYMMETRIC(src, 3);                             \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 5);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 3, pe, 5);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, dest=%p, src=%p, nelems=%lu, pe=%d)",   \
@@ -429,8 +451,8 @@
                           _type *addr, _type val, int pe)           \
     {                                                               \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                           \
-        SHMEMU_CHECK_SYMMETRIC(addr, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(addr, 2, pe, 4);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, addr=%p, value=%lu, pe=%d)",            \
@@ -452,8 +474,8 @@
         _type val;                                                  \
                                                                     \
         SHMEMU_CHECK_INIT();                                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 3);                           \
-        SHMEMU_CHECK_SYMMETRIC(addr, 2);                            \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 3);                           \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(addr, 2, pe, 3);			\
                                                                     \
         logger(LOG_RMA,                                             \
                "%s(ctx=%lu, addr=%p, pe=%d)",                       \
@@ -536,8 +558,8 @@
                         size_t nelems, int pe)                  \
     {                                                           \
         SHMEMU_CHECK_INIT();                                    \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                       \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                        \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);                       \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 4);		      \
                                                                 \
         shmem_ctx_##_name##_put(SHMEM_CTX_DEFAULT,              \
                                 dest, src,                      \
@@ -549,8 +571,8 @@
                             size_t nelems, int pe)              \
     {                                                           \
         SHMEMU_CHECK_INIT();                                    \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                       \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                        \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);                       \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 4);		      \
                                                                 \
         shmem_ctx_##_name##_put_nbi(SHMEM_CTX_DEFAULT,          \
                                     dest, src,                  \
@@ -563,8 +585,8 @@
                          size_t nelems, int pe)                 \
     {                                                           \
         SHMEMU_CHECK_INIT();                                    \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 6);                       \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                        \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 6);                       \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 6);		      \
                                                                 \
         shmem_ctx_##_name##_iput(SHMEM_CTX_DEFAULT,             \
                                  dest, src,                     \
@@ -578,8 +600,8 @@
                         size_t nelems, int pe)                  \
     {                                                           \
         SHMEMU_CHECK_INIT();                                    \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                       \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                         \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);                       \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 4);		      \
                                                                 \
         shmem_ctx_##_name##_get(SHMEM_CTX_DEFAULT,              \
                                 dest, src,                      \
@@ -591,8 +613,8 @@
                               size_t nelems, int pe)            \
     {                                                           \
         SHMEMU_CHECK_INIT();                                    \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                       \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                         \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);                       \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 4);		      \
                                                                 \
         shmem_ctx_##_name##_get##_nbi(SHMEM_CTX_DEFAULT,        \
                                       dest, src,                \
@@ -605,8 +627,8 @@
                          size_t nelems, int pe)                 \
     {                                                           \
         SHMEMU_CHECK_INIT();                                    \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 6);                       \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                         \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 6);                 \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 6);		\
                                                                 \
         shmem_ctx_##_name##_iget(SHMEM_CTX_DEFAULT,             \
                                  dest, src,                     \
@@ -620,8 +642,8 @@
                      size_t nelems, int pe)                 \
     {                                                       \
         SHMEMU_CHECK_INIT();                                \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                   \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                    \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);             \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 4);	    \
                                                             \
         shmem_ctx_put##_size(SHMEM_CTX_DEFAULT,             \
                              dest, src, nelems, pe);        \
@@ -631,8 +653,8 @@
                            size_t nelems, int pe)           \
     {                                                       \
         SHMEMU_CHECK_INIT();                                \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                   \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                    \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);             \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 4);	    \
                                                             \
         shmem_ctx_put##_size##_nbi(SHMEM_CTX_DEFAULT,       \
                                    dest, src, nelems, pe);  \
@@ -643,8 +665,8 @@
                       size_t nelems, int pe)                \
     {                                                       \
         SHMEMU_CHECK_INIT();                                \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 6);                   \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                    \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 6);             \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 6);	    \
                                                             \
         shmem_ctx_iput##_size(SHMEM_CTX_DEFAULT,            \
                               dest, src, tst, sst,          \
@@ -656,9 +678,9 @@
     shmem_get##_size(void *dest, const void *src,           \
                      size_t nelems, int pe)                 \
     {                                                       \
-        SHMEMU_CHECK_INIT();                                \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                   \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                     \
+        SHMEMU_CHECK_INIT();				    \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);             \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 4);	    \
                                                             \
         shmem_ctx_get##_size(SHMEM_CTX_DEFAULT,             \
                              dest, src, nelems, pe);        \
@@ -668,8 +690,8 @@
                            size_t nelems, int pe)           \
     {                                                       \
         SHMEMU_CHECK_INIT();                                \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);                   \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                     \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);		    \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 4);	    \
                                                             \
         shmem_ctx_get##_size##_nbi(SHMEM_CTX_DEFAULT,       \
                                    dest, src, nelems, pe);  \
@@ -680,8 +702,8 @@
                       size_t nelems, int pe)                \
     {                                                       \
         SHMEMU_CHECK_INIT();                                \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 6);                   \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                     \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 6);		    \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 6);	    \
                                                             \
         shmem_ctx_iget##_size(SHMEM_CTX_DEFAULT,            \
                               dest, src, tst, sst,          \
@@ -694,8 +716,8 @@
                  size_t nelems, int pe)                 \
     {                                                   \
         SHMEMU_CHECK_INIT();                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);               \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);		\
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 4);	\
                                                         \
         shmem_ctx_putmem(SHMEM_CTX_DEFAULT,             \
                          dest, src, nelems, pe);        \
@@ -705,8 +727,8 @@
                      size_t nelems, int pe)             \
     {                                                   \
         SHMEMU_CHECK_INIT();                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);               \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);		\
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 4);	\
                                                         \
         shmem_ctx_putmem_nbi(SHMEM_CTX_DEFAULT,         \
                              dest, src, nelems, pe);    \
@@ -718,8 +740,8 @@
                  size_t nelems, int pe)                 \
     {                                                   \
         SHMEMU_CHECK_INIT();                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);               \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                 \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);		\
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 4);	\
                                                         \
         shmem_ctx_getmem(SHMEM_CTX_DEFAULT,             \
                          dest, src, nelems, pe);        \
@@ -729,8 +751,8 @@
                      size_t nelems, int pe)             \
     {                                                   \
         SHMEMU_CHECK_INIT();                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 4);               \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);                 \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 4);		\
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 4);	\
                                                         \
         shmem_ctx_getmem_nbi(SHMEM_CTX_DEFAULT,         \
                              dest, src, nelems, pe);    \
@@ -741,8 +763,8 @@
     shmem_##_name##_p(_type *dest, _type src, int pe)   \
     {                                                   \
         SHMEMU_CHECK_INIT();                            \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 3);               \
-        SHMEMU_CHECK_SYMMETRIC(dest, 1);                \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 3);		\
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(dest, 1, pe, 3);	\
                                                         \
         shmem_ctx_##_name##_put(SHMEM_CTX_DEFAULT,      \
                                 dest, &src, 1, pe);     \
@@ -753,10 +775,10 @@
     shmem_##_name##_g(const _type *src, int pe)     \
     {                                               \
         _type val;                                  \
-                                                    \
-        SHMEMU_CHECK_INIT();                        \
-        SHMEMU_CHECK_PE_ARG_RANGE(pe, 2);           \
-        SHMEMU_CHECK_SYMMETRIC(src, 2);             \
+						    \
+        SHMEMU_CHECK_INIT();			    \
+        SHMEM_PUTGET_CHECK_PE_ARG_RANGE(pe, 2);	    \
+        SHMEM_PUTGET_CHECK_ACCESSIBLE(src, 2, pe, 2); \
                                                     \
         shmem_ctx_##_name##_get(SHMEM_CTX_DEFAULT,  \
                                 &val, src, 1, pe);  \

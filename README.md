@@ -1,5 +1,41 @@
-This project is the Open Source Software Solutions (OSSS) OpenSHMEM
-Implementation on top of OpenUCX (UCX) and PMIx.
+<div align="center">
+  <a href="https://www.ucfconsortium.org/projects/opensnapi/"><img src="./contrib/img/OpenSNAPI.jpg" width="200"></a>
+</div>
+
+Introduction
+============
+
+OpenSHMEM-SNAPI is an open source research project based on the [OSSS
+OpenSHMEM](https://github.com/openshmem-org/osss-ucx) library implementation.
+This software is developed under the [UCF’s Open Smart Network Application
+Programming Interface
+(OpenSNAPI)](https://www.ucfconsortium.org/projects/opensnapi/) project. It
+enables Smart Networking Adapters to provide fast and granular access to large
+datasets in order to deliver higher application performance for
+latency-sensitive applications and analytic workflows.
+
+The project adds two major components to the OSSS OpenSHMEM implementation.
+ * The OpenSNAPI low-overhead persistent storage server is a stand alone component
+ based on [Open UCX communication library](https://www.openucx.org).
+ * The OpenSHMEM fspace API implements a client for the OpenSNAPI storage server.
+
+The OpenSNAPI storage server tested on Mellanox Bluefield software development
+platfrom with NVDIMM-N memory installed. The OpenSHMEM fspace client API was
+tested on the Marvell ThunderX2 platform.
+
+* Installation instructions can be found here [contrib](contrib)
+* Detailed description of the API and the project are found in the publication.
+
+To reference OpenSHMEM-SNAPI in a publication, please use the following entry:
+```bibtex
+@inproceedings{shmemio-snapi,
+  title={OpenSHMEM I/O Extensions for Fine-grained Access to Persistent Memory Storage},
+  author={Megan Grodowitz, Pavel Shamis, Steve Poole},
+  booktitle={SMC2020},
+  year={2020},
+  organization={SMC2020}
+}
+```
 
 Links
 =====

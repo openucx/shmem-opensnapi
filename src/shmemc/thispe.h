@@ -1,4 +1,5 @@
 /* For license: see LICENSE file at top-level */
+// Copyright (c) 2018 - 2020 Arm, Ltd
 
 #ifndef _THISPE_H
 #define _THISPE_H 1
@@ -6,6 +7,12 @@
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif /* HAVE_CONFIG_H */
+
+#ifdef ENABLE_SHMEMIO
+typedef struct shmemio_fspace_s      shmemio_fspace_t;
+typedef struct shmemio_client_fpe_s  shmemio_client_fpe_t;
+typedef struct shmemio_fp_s          shmemio_fp_t;
+#endif
 
 #include "boolean.h"
 #include "threading.h"
@@ -87,6 +94,22 @@ typedef struct shmemc_team {
     size_t nmembers;            /* how many PEs */
 } shmemc_team_t;
 
+
+#ifdef ENABLE_SHMEMIO
+/*
+ * PE can be a shmemio_client
+ */
+typedef struct shmemio_client {
+  int nfpes;                  /* max fpe index with all connected filespaces */
+  shmemio_client_fpe_t *fpes; /* file pes */
+  int nfspaces;                      /* how many connected filespaces */
+  shmemio_fspace_t *fspaces;         /* connected filespaces */
+#ifdef ENABLE_DEBUG
+  shmemio_fp_t *fp_active_list;
+#endif
+} shmemio_client_t;
+#endif
+  
 /*
  * each PE has this state info
  */
@@ -104,6 +127,9 @@ typedef struct thispe_info {
     shmemc_team_t *teams;       /* PE teams we belong to */
     size_t nteams;              /* how many teams */
     bool progress_thread;       /* PE requests progress thread */
+#ifdef ENABLE_SHMEMIO
+  shmemio_client_t io;
+#endif
 } thispe_info_t;
 
 #endif /* ! _THISPE_H */

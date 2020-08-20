@@ -28,7 +28,7 @@ config_flags="$*"
 AC_DEFINE_UNQUOTED([CONFIG_FLAGS],
 			["$config_flags"],
 			[Flags passed to configure])
-	
+
 AC_SUBST([SHMEM_MAJOR_VERSION], [spec_major_version])
 AC_SUBST([SHMEM_MINOR_VERSION], [spec_minor_version])
 AC_SUBST([SHMEM_MAX_NAME_LEN],  [spec_max_name_len])
@@ -86,6 +86,9 @@ m4_include([config/m4/cxx.m4])
 
 # Fortran-specific checks
 m4_include([config/m4/fortran.m4])
+
+# shmemio config options
+m4_include([config/m4/shmemio.m4])
 
 # static and shared library detection
 AS_IF([test "x$enable_static" = "xyes"],
@@ -183,6 +186,7 @@ AC_CONFIG_FILES([
 	src/shmemc/Makefile
 	src/shmemc/osh_common
 	src/shmemu/Makefile
+	src/shmemio/Makefile
         ])
 
 AC_OUTPUT

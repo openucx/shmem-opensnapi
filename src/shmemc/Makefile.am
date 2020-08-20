@@ -2,6 +2,11 @@
 
 OTHER_CPPFLAGS            = -I$(srcdir)/../shmemu \
 				-I../../include -I$(srcdir)/..
+
+if ENABLE_SHMEMIO
+OTHER_CPPFLAGS            += -I$(srcdir)/../shmemio
+endif #shmemio
+
 LIBSHMEMC_SOURCES         = \
 				contexts.c \
 				globalexit.c \

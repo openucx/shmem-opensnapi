@@ -20,6 +20,10 @@ SHMEM_HDRS             += shmem/defs.fh shmem.fh
 SHMEM_HDRS             += mpp/shmem.fh
 endif # fortran
 
+if ENABLE_SHMEMIO
+SHMEM_HDRS             += shmem/api_shmemio.h shmem/defs_shmemio.h
+endif # shmemio
+
 #
 # add profiling interface if requested
 #

@@ -10,6 +10,10 @@
 #include <stddef.h>               /* ptrdiff_t */
 #include <stdint.h>               /* sized int types */
 
+#ifdef INCLUDE_API_SHMEMIO
+#include "shmem/api_shmemio.h"
+#endif
+
 /*
  * for handling the "I" (upper-case eye) macro for complex numbers
  *
